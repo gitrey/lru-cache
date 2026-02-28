@@ -1,6 +1,6 @@
 # LRU Cache implementation in Python
 
-This project provides a production-grade, thread-safe implementation of a Least Recently Used (LRU) Cache in Python. 
+This project provides a production-grade, thread-safe implementation of a Least Recently Used (LRU) Cache in Python.
 
 The implementation uses a combination of a Doubly Linked List and a Hash Map (`dict`) to achieve `O(1)` average time complexity for both `get` and `put` operations, with strict capacity limits and concurrency safety.
 
@@ -41,17 +41,17 @@ def inference_worker(worker_id: int):
     """Simulates a threaded API worker handling LLM inference requests."""
     for i in range(50):
         # Simulate overlapping user prompts across different API threads
-        prompt = f"What is the capital of country {i % 25}?" 
-        
+        prompt = f"What is the capital of country {i % 25}?"
+
         # Check if the inference result is already cached from another thread
         response = cache.get(prompt)
-        
+
         if response is None:
             # Simulate an expensive LLM inference call if cache miss occurs
             time.sleep(0.05)
             response = f"Simulated LLM response for country {i % 25} (handled by worker {worker_id})"
             cache.put(prompt, response)
-            
+
 # Create 10 concurrent API threads handling inference requests
 threads = []
 for i in range(10):
@@ -63,23 +63,25 @@ for i in range(10):
 for t in threads:
     t.join()
 
-# Final state: the internal lock protected the cache size limit and pointers 
+# Final state: the internal lock protected the cache size limit and pointers
 print(f"Total cached inference completions: {len(cache)}") # Output: <= 100
 ```
 
-### Thread Safety & Locking
+### Thread Safety & Lock Sharding
 
-The `LRUCache` utilizes Pythons `threading.RLock()` (Re-entrant Lock) to accomplish thread safety. This was chosen specifically for safely locking internal helper methods. 
+The `LRUCache` utilizes an advanced **Lock Sharding** strategy to accomplish high-concurrency thread safety, dramatically outperforming a standard global-lock design.
 
 Here is how the locking works in this implementation:
-- **Scope**: Every public method that mutates state (`put`, `clear`) or relies on state mutation while reading (`get` moves nodes to the front) acquires the lock using Python's `with self._lock:` context manager.
-- **Why RLock?**: A Re-entrant Lock allows the thread that currently holds the lock to acquire it again without deadlocking itself. The `LRUCache` utilizes this by using public methods like `__len__` or `__contains__` inside other locked operations if needed, or by ensuring all `Node` movements through internal methods (`_add_node_to_front`, `_remove_node`, `_pop_tail`) remain protected when invoked directly.
-- **Performance consideration**: The lock is held for the minimum duration necessary to swap pointers in memory and alter the hash map. Because `O(1)` operations don't run any loops or scans, the lock holding time is extremely brief, minimizing contention across multiple threads.
+
+- **Segmented Array**: The internal state is completely divided into `num_shards` independent `_LRUCacheShard` processes (defaulting to 16).
+- **Modulo Hashing Routing**: Incoming keys are deterministically routed to a specific isolated shard via `hash(key) % num_shards`.
+- **High Concurrency**: Because the locks are separated, up to 16 threads (by default) can simultaneously perform `put` or `get` operations on the cache without ever blocking each other, provided their hashed keys route to distinct shards.
+- **Why RLock?**: Each shard uses a local Re-entrant Lock (`threading.RLock`) to guarantee local thread-safety, allowing internal recursive assertions or iterations inside the isolated namespace without risking deadlock.
 
 ### Time Complexity
 
 - **`get(key)`: O(1) average case**. Looking up the node in the internal hash map takes `O(1)`. Unlinking it from its current position in the sequence and re-linking it to the front (marking it as most-recently-used) takes `O(1)` because we have direct pointers to nodes.
-- **`put(key, value)`: O(1) average case**. 
+- **`put(key, value)`: O(1) average case**.
   - If the key exists: updating the value and moving the node to the front takes `O(1)`.
   - If the key doesn't exist: creating the new node and adding it to the front takes `O(1)`.
   - If capacity acts as a constraint: identifying the least recently used node (tail) and slicing it off from both the doubly linked list and hash map takes `O(1)`.
@@ -90,13 +92,15 @@ Here is how the locking works in this implementation:
 
 ## Benchmarking
 
-A benchmarking script is provided to compare the raw execution speed of our custom pure-Python `LRUCache` against the standard C-implemented `functools.lru_cache()`. 
+A benchmarking script is provided to compare the raw execution speed of our custom pure-Python `LRUCache` against the standard C-implemented `functools.lru_cache()`.
 
 Run the comparison:
+
 ```bash
 python3 benchmark.py
 ```
-*Note: While `functools.lru_cache` (written in optimized C bytecode inside Python) executes strictly faster, the custom `LRUCache` validates identical `O(1)` runtime complexities for pure-Python deployments.*
+
+_Note: While `functools.lru_cache` (written in optimized C bytecode inside Python) executes strictly faster, the custom `LRUCache` validates identical `O(1)` runtime complexities for pure-Python deployments._
 
 ## Running Tests
 
@@ -107,6 +111,7 @@ python3 test_lru_cache.py -v
 ```
 
 The test scope includes:
+
 - Basic input/output matching and proper LRU eviction properties.
 - **Time-to-Live (TTL)** expiration logic.
 - Initialization edge cases validation.
