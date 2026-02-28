@@ -1,0 +1,5 @@
+# No external dependencies are required for the core LRUCache implementation
+# as it only utilizes the Python Standard Library (threading, typing, etc.).
+
+# If you want to use the pytest framework (optional, as tests were rewritten to use unittest)
+# pytest==7.4.3
