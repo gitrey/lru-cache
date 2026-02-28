@@ -2,13 +2,13 @@
 
 This project provides a production-grade, thread-safe implementation of a Least Recently Used (LRU) Cache in Python.
 
-The implementation uses a combination of a Doubly Linked List and a Hash Map (`dict`) to achieve `O(1)` average time complexity for both `get` and `put` operations, with strict capacity limits and concurrency safety.
+The implementation uses a combination of a Doubly Linked List, a Hash Map (`dict`), and **Lock Sharding** to achieve `O(1)` average time complexity for both `get` and `put` operations, with strict capacity limits and high-concurrency safety.
 
 ## Features
 
 - **Generic Types**: Built with generic types (`Generic[K, V]`) for both key and value to ensure strict type checking using mypy or your favorite type checker.
 - **`O(1)` Time Complexity**: Uses a hash map for fast `O(1)` lookups and a doubly linked list for fast `O(1)` insertions, deletions, and moving items to the most-recently-used position.
-- **Thread Security**: Employs a re-entrant lock (`threading.RLock`) to ensure the cache operations are safe in multi-threaded environments, preventing race conditions and deadlocks.
+- **Thread Security via Lock Sharding**: Divides the cache into independent shards, each with its own re-entrant lock (`threading.RLock`), to dramatically reduce thread contention and maximize concurrency in multi-threaded environments.
 - **Time-to-Live (TTL)**: Supports optional TTL definitions per capacity, ensuring entries organically expire based on cache lifetime without explicit manual deletion.
 - **Safe Eviction**: Handles robust circular cleanup to assist Python's garbage collector.
 - **Comprehensive Testing**: Validated against multiple concurrency edge cases and core logic verifications using `unittest`.
@@ -33,9 +33,10 @@ import threading
 import time
 from lru_cache import LRUCache
 
-# Initialize the thread-safe cache with a capacity of 100 to store inference results
-# Add an optional ttl_seconds rule, expiring LLM inferences after 5 minutes (300 seconds)
-cache: LRUCache[str, str] = LRUCache(100, ttl_seconds=300)
+# Initialize the thread-safe cache with a capacity of 100 to store inference results.
+# Add an optional ttl_seconds rule, expiring LLM inferences after 5 minutes (300 seconds).
+# Customize num_shards to distribute concurrent thread locks (defaults to 16).
+cache: LRUCache[str, str] = LRUCache(100, ttl_seconds=300, num_shards=16)
 
 def inference_worker(worker_id: int):
     """Simulates a threaded API worker handling LLM inference requests."""
@@ -63,7 +64,7 @@ for i in range(10):
 for t in threads:
     t.join()
 
-# Final state: the internal lock protected the cache size limit and pointers
+# Final state: the sharded locks simultaneously protected the cache size limit and pointers
 print(f"Total cached inference completions: {len(cache)}") # Output: <= 100
 ```
 
@@ -100,7 +101,7 @@ Run the comparison:
 python3 benchmark.py
 ```
 
-_Note: While `functools.lru_cache` (written in optimized C bytecode inside Python) executes strictly faster, the custom `LRUCache` validates identical `O(1)` runtime complexities for pure-Python deployments._
+_Note: While `functools.lru_cache` (written in optimized C bytecode inside Python) executes strictly faster sequentially, our custom `LRUCache` utilizes Python-level **Lock Sharding** to scale dramatically better under high multi-threaded contention payloads._
 
 ## Running Tests
 
