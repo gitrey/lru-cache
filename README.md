@@ -9,6 +9,7 @@ The implementation uses a combination of a Doubly Linked List and a Hash Map (`d
 - **Generic Types**: Built with generic types (`Generic[K, V]`) for both key and value to ensure strict type checking using mypy or your favorite type checker.
 - **`O(1)` Time Complexity**: Uses a hash map for fast `O(1)` lookups and a doubly linked list for fast `O(1)` insertions, deletions, and moving items to the most-recently-used position.
 - **Thread Security**: Employs a re-entrant lock (`threading.RLock`) to ensure the cache operations are safe in multi-threaded environments, preventing race conditions and deadlocks.
+- **Time-to-Live (TTL)**: Supports optional TTL definitions per capacity, ensuring entries organically expire based on cache lifetime without explicit manual deletion.
 - **Safe Eviction**: Handles robust circular cleanup to assist Python's garbage collector.
 - **Comprehensive Testing**: Validated against multiple concurrency edge cases and core logic verifications using `unittest`.
 
@@ -33,7 +34,8 @@ import time
 from lru_cache import LRUCache
 
 # Initialize the thread-safe cache with a capacity of 100 to store inference results
-cache: LRUCache[str, str] = LRUCache(100)
+# Add an optional ttl_seconds rule, expiring LLM inferences after 5 minutes (300 seconds)
+cache: LRUCache[str, str] = LRUCache(100, ttl_seconds=300)
 
 def inference_worker(worker_id: int):
     """Simulates a threaded API worker handling LLM inference requests."""
@@ -86,6 +88,16 @@ Here is how the locking works in this implementation:
 
 - **O(capacity)**: Space expands corresponding to the `capacity` argument, storing at most `capacity` entries. The overhead involves pointers (`prev`, `next`) inside the linked list nodes and references maintained by the Python dictionary.
 
+## Benchmarking
+
+A benchmarking script is provided to compare the raw execution speed of our custom pure-Python `LRUCache` against the standard C-implemented `functools.lru_cache()`. 
+
+Run the comparison:
+```bash
+python3 benchmark.py
+```
+*Note: While `functools.lru_cache` (written in optimized C bytecode inside Python) executes strictly faster, the custom `LRUCache` validates identical `O(1)` runtime complexities for pure-Python deployments.*
+
 ## Running Tests
 
 The test suite leverages Python's built-in `unittest` module. To execute all unit tests, run the following command directly from the root directory:
@@ -96,6 +108,7 @@ python3 test_lru_cache.py -v
 
 The test scope includes:
 - Basic input/output matching and proper LRU eviction properties.
+- **Time-to-Live (TTL)** expiration logic.
 - Initialization edge cases validation.
 - Extensive simulation of high competition multi-threaded reads, writes, and iterations.
 

@@ -12,9 +12,12 @@ class TestLRUCache(unittest.TestCase):
             LRUCache(0)
         with self.assertRaises(ValueError):
             LRUCache(-5)
+        with self.assertRaises(ValueError):
+            LRUCache(3, ttl_seconds=-1)
             
-        cache = LRUCache(3)
+        cache = LRUCache(3, ttl_seconds=5)
         self.assertEqual(cache.capacity, 3)
+        self.assertEqual(cache.ttl_seconds, 5)
         self.assertEqual(len(cache), 0)
 
     def test_lru_cache_basic_operations(self):
@@ -53,6 +56,39 @@ class TestLRUCache(unittest.TestCase):
         cache.clear()
         self.assertEqual(len(cache), 0)
         self.assertIsNone(cache.get(1))
+        
+    def test_lru_cache_ttl_expiration(self):
+        # Extremely short TTL
+        cache = LRUCache(3, ttl_seconds=0.01)
+        cache.put('a', 1)
+        cache.put('b', 2)
+        
+        self.assertEqual(cache.get('a'), 1)
+        
+        time.sleep(0.02)
+        
+        # Values should be expired
+        self.assertIsNone(cache.get('a'))
+        self.assertIsNone(cache.get('b'))
+        self.assertFalse('b' in cache)
+        # Len calculates non-expired values
+        self.assertEqual(len(cache), 0) 
+        
+    def test_lru_cache_ttl_refresh_on_put(self):
+        cache = LRUCache(5, ttl_seconds=0.02)
+        cache.put('a', 1)
+        
+        time.sleep(0.01)
+        self.assertEqual(cache.get('a'), 1)
+        
+        # Overwrite item completely refreshes TTL timestamp
+        cache.put('a', 2)
+        time.sleep(0.01)
+        
+        # It's been 0.02 since creation, but only 0.01 since overwrite hook
+        self.assertTrue('a' in cache)
+        self.assertEqual(cache.get('a'), 2)
+        self.assertEqual(len(cache), 1)
 
     def test_lru_cache_thread_safety(self):
         cache = LRUCache(1000)
