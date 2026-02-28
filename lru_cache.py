@@ -47,6 +47,9 @@ class _LRUCacheShard(Generic[K, V]):
         self._ttl_seconds: Optional[float] = ttl_seconds
         self._cache: Dict[K, Node[K, V]] = {}
 
+        self.hits: int = 0
+        self.misses: int = 0
+
         # Dummy head and tail nodes to simplify edge cases in doubly linked list operations
         self._head: Node[K, V] = Node(cast(K, None), cast(V, None))
         self._tail: Node[K, V] = Node(cast(K, None), cast(V, None))
@@ -91,12 +94,15 @@ class _LRUCacheShard(Generic[K, V]):
         with self._lock:
             node = self._cache.get(key)
             if node is None:
+                self.misses += 1
                 return None
             if self._is_expired(node):
                 self._remove_node(node)
                 del self._cache[key]
+                self.misses += 1
                 return None
             self._move_to_front(node)
+            self.hits += 1
             return node.value
 
     def put(self, key: K, value: V) -> None:
@@ -139,6 +145,8 @@ class _LRUCacheShard(Generic[K, V]):
                 curr.next = None
                 curr = nxt
             self._cache.clear()
+            self.hits = 0
+            self.misses = 0
             self._head.next = self._tail
             self._tail.prev = self._head
 
@@ -242,6 +250,27 @@ class LRUCache(Generic[K, V]):
     def ttl_seconds(self) -> Optional[float]:
         """Optional[float]: The Time-to-Live configured globally."""
         return self._ttl_seconds
+
+    @property
+    def hits(self) -> int:
+        """int: The total number of successful cache retrievals across all shards."""
+        return sum(shard.hits for shard in self._shards)
+
+    @property
+    def misses(self) -> int:
+        """int: The total number of cache lookups that failed or were expired."""
+        return sum(shard.misses for shard in self._shards)
+
+    def get_shard_metrics(self) -> Dict[int, Dict[str, int]]:
+        """Retrieves individual hit/miss metrics for every internal shard.
+
+        Returns:
+            Dict[int, Dict[str, int]]: A dictionary mapping shard index to its "hits" and "misses".
+        """
+        return {
+            i: {"hits": shard.hits, "misses": shard.misses}
+            for i, shard in enumerate(self._shards)
+        }
 
     def __len__(self) -> int:
         """Calculates the combined number of unexpired elements universally resting in the shards.

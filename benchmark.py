@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from lru_cache import LRUCache
 
 
-def run_benchmark(iterations=10_000, capacity=10_000, num_threads=10):
+def run_benchmark(iterations=100_000_000, capacity=100_000, num_threads=10):
     """
     Benchmarks standard functools.lru_cache against the custom Sharded LRUCache
     under intensive multi-threaded conditions.

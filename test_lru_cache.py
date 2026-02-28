@@ -132,6 +132,58 @@ class TestLRUCache(unittest.TestCase):
         # Capacity shouldn't be exceeded
         self.assertLessEqual(len(cache2), 500)
 
+    def test_lru_cache_statistics(self):
+        cache = LRUCache(10, num_shards=2)
+
+        # Test 1 miss initially
+        cache.get("a")
+        self.assertEqual(cache.hits, 0)
+        self.assertEqual(cache.misses, 1)
+
+        # Test 1 put followed by 1 hit
+        cache.put("a", 1)
+        cache.get("a")
+        self.assertEqual(cache.hits, 1)
+        self.assertEqual(cache.misses, 1)
+
+        # Test misses over different namespace
+        cache.get("b")
+        cache.get("c")
+        self.assertEqual(cache.hits, 1)
+        self.assertEqual(cache.misses, 3)
+
+        # Test clear resets stats
+        cache.clear()
+        self.assertEqual(cache.hits, 0)
+        self.assertEqual(cache.misses, 0)
+
+        # Test TTL boundaries trigger misses
+        ttl_cache = LRUCache(10, ttl_seconds=0.01, num_shards=1)
+        ttl_cache.put("expire_me", 100)
+        time.sleep(0.02)  # Force expire
+
+        ttl_cache.get("expire_me")
+        self.assertEqual(ttl_cache.hits, 0)
+        self.assertEqual(ttl_cache.misses, 1)
+
+    def test_lru_cache_shard_metrics(self):
+        cache = LRUCache(10, num_shards=4)
+
+        # Artificially trigger multiple routes to distribute stats over the sub-dicts
+        for i in range(100):
+            cache.get(f"key_{i}")  # All misses initially
+
+        metrics = cache.get_shard_metrics()
+
+        self.assertEqual(len(metrics), 4)
+
+        total_misses = sum(data["misses"] for data in metrics.values())
+        total_hits = sum(data["hits"] for data in metrics.values())
+
+        self.assertEqual(total_misses, 100)
+        self.assertEqual(total_hits, 0)
+        self.assertEqual(cache.misses, 100)
+
 
 if __name__ == "__main__":
     unittest.main()

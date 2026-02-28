@@ -10,6 +10,7 @@ The implementation uses a combination of a Doubly Linked List, a Hash Map (`dict
 - **`O(1)` Time Complexity**: Uses a hash map for fast `O(1)` lookups and a doubly linked list for fast `O(1)` insertions, deletions, and moving items to the most-recently-used position.
 - **Thread Security via Lock Sharding**: Divides the cache into independent shards, each with its own re-entrant lock (`threading.RLock`), to dramatically reduce thread contention and maximize concurrency in multi-threaded environments.
 - **Time-to-Live (TTL)**: Supports optional TTL definitions per capacity, ensuring entries organically expire based on cache lifetime without explicit manual deletion.
+- **Cache Statistics**: Tracks total hits, misses, and hit-rate per shard and globally for performance monitoring.
 - **Safe Eviction**: Handles robust circular cleanup to assist Python's garbage collector.
 - **Comprehensive Testing**: Validated against multiple concurrency edge cases and core logic verifications using `unittest`.
 
@@ -90,6 +91,27 @@ Here is how the locking works in this implementation:
 ### Space Complexity
 
 - **O(capacity)**: Space expands corresponding to the `capacity` argument, storing at most `capacity` entries. The overhead involves pointers (`prev`, `next`) inside the linked list nodes and references maintained by the Python dictionary.
+
+## Cache Statistics
+
+The `LRUCache` provides built-in metrics to monitor its performance. You can access global statistics or drill down into individual shard performance.
+
+```python
+# Global statistics
+print(f"Total Hits: {cache.hits}")
+print(f"Total Misses: {cache.misses}")
+
+# Calculate Hit Rate
+total_requests = cache.hits + cache.misses
+if total_requests > 0:
+    hit_rate = (cache.hits / total_requests) * 100
+    print(f"Hit Rate: {hit_rate:.2f}%")
+
+# Per-shard metrics
+shard_metrics = cache.get_shard_metrics()
+for shard_id, metrics in shard_metrics.items():
+    print(f"Shard {shard_id}: Hits={metrics['hits']}, Misses={metrics['misses']}")
+```
 
 ## Benchmarking
 
